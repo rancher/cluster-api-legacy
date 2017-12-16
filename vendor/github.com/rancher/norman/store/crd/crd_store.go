@@ -2,7 +2,6 @@ package crd
 
 import (
 	"context"
-	"net/http"
 	"strings"
 	"time"
 
@@ -66,10 +65,10 @@ func (c *Store) ByID(apiContext *types.APIContext, schema *types.Schema, id stri
 	return store.ByID(apiContext, schema, id)
 }
 
-func (c *Store) Delete(apiContext *types.APIContext, schema *types.Schema, id string) error {
+func (c *Store) Delete(apiContext *types.APIContext, schema *types.Schema, id string) (map[string]interface{}, error) {
 	store, ok := c.schemaStores[key(schema)]
 	if !ok {
-		return nil
+		return nil, nil
 	}
 	return store.Delete(apiContext, schema, id)
 }
@@ -111,7 +110,7 @@ func (c *Store) AddSchemas(ctx context.Context, schemas ...*types.Schema) error 
 	var allSchemas []*types.Schema
 
 	for _, schema := range schemas {
-		if schema.Store != nil || !contains(schema.CollectionMethods, http.MethodGet) {
+		if schema.Store != nil || !schema.CanList() {
 			continue
 		}
 
