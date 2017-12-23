@@ -2,6 +2,7 @@ package proxy
 
 import (
 	ejson "encoding/json"
+	"net/http"
 	"strings"
 
 	"github.com/rancher/norman/types"
@@ -19,6 +20,13 @@ import (
 	restclientwatch "k8s.io/client-go/rest/watch"
 )
 
+var (
+	authHeaders = []string{
+		"Impersonate-User",
+		"Impersonate-Group",
+	}
+)
+
 type Store struct {
 	k8sClient      rest.Interface
 	prefix         []string
@@ -26,6 +34,7 @@ type Store struct {
 	version        string
 	kind           string
 	resourcePlural string
+	authContext    map[string]string
 }
 
 func NewProxyStore(k8sClient rest.Interface,
@@ -37,7 +46,18 @@ func NewProxyStore(k8sClient rest.Interface,
 		version:        version,
 		kind:           kind,
 		resourcePlural: resourcePlural,
+		authContext: map[string]string{
+			"apiGroup": group,
+			"resource": resourcePlural,
+		},
 	}
+}
+
+func (p *Store) doAuthed(apiContext *types.APIContext, request *rest.Request) rest.Result {
+	for _, header := range authHeaders {
+		request.SetHeader(header, apiContext.Request.Header[http.CanonicalHeaderKey(header)]...)
+	}
+	return request.Do()
 }
 
 func (p *Store) ByID(apiContext *types.APIContext, schema *types.Schema, id string) (map[string]interface{}, error) {
@@ -51,7 +71,7 @@ func (p *Store) byID(apiContext *types.APIContext, schema *types.Schema, id stri
 	req := p.common(namespace, p.k8sClient.Get()).
 		Name(id)
 
-	return p.singleResult(schema, req)
+	return p.singleResult(apiContext, schema, req)
 }
 
 func (p *Store) List(apiContext *types.APIContext, schema *types.Schema, opt types.QueryOptions) ([]map[string]interface{}, error) {
@@ -71,7 +91,7 @@ func (p *Store) List(apiContext *types.APIContext, schema *types.Schema, opt typ
 		result = append(result, p.fromInternal(schema, obj.Object))
 	}
 
-	return result, nil
+	return apiContext.AccessControl.FilterList(apiContext, result, p.authContext), nil
 }
 
 func (p *Store) Watch(apiContext *types.APIContext, schema *types.Schema, opt types.QueryOptions) (chan map[string]interface{}, error) {
@@ -101,7 +121,7 @@ func (p *Store) Watch(apiContext *types.APIContext, schema *types.Schema, opt ty
 		for event := range watcher.ResultChan() {
 			data := event.Object.(*unstructured.Unstructured)
 			p.fromInternal(schema, data.Object)
-			result <- data.Object
+			result <- apiContext.AccessControl.Filter(apiContext, data.Object, p.authContext)
 		}
 		close(result)
 	}()
@@ -150,7 +170,7 @@ func (p *Store) Create(apiContext *types.APIContext, schema *types.Schema, data 
 			Object: data,
 		})
 
-	_, result, err := p.singleResult(schema, req)
+	_, result, err := p.singleResult(apiContext, schema, req)
 	return result, err
 }
 
@@ -188,7 +208,7 @@ func (p *Store) Update(apiContext *types.APIContext, schema *types.Schema, data 
 		}).
 		Name(id)
 
-	_, result, err := p.singleResult(schema, req)
+	_, result, err := p.singleResult(apiContext, schema, req)
 	return result, err
 }
 
@@ -202,7 +222,7 @@ func (p *Store) Delete(apiContext *types.APIContext, schema *types.Schema, id st
 		}).
 		Name(id)
 
-	err := req.Do().Error()
+	err := p.doAuthed(apiContext, req).Error()
 	if err != nil {
 		return nil, err
 	}
@@ -214,9 +234,9 @@ func (p *Store) Delete(apiContext *types.APIContext, schema *types.Schema, id st
 	return obj, nil
 }
 
-func (p *Store) singleResult(schema *types.Schema, req *rest.Request) (string, map[string]interface{}, error) {
+func (p *Store) singleResult(apiContext *types.APIContext, schema *types.Schema, req *rest.Request) (string, map[string]interface{}, error) {
 	result := &unstructured.Unstructured{}
-	err := req.Do().Into(result)
+	err := p.doAuthed(apiContext, req).Into(result)
 	if err != nil {
 		return "", nil, err
 	}
