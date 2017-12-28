@@ -5,9 +5,11 @@ import (
 
 	"github.com/rancher/cluster-api/api/pod"
 	"github.com/rancher/cluster-api/api/workload"
+	"github.com/rancher/cluster-api/store/secret"
 	"github.com/rancher/norman/pkg/subscribe"
 	"github.com/rancher/norman/store/crd"
 	"github.com/rancher/norman/store/proxy"
+	"github.com/rancher/norman/store/subtype"
 	"github.com/rancher/norman/store/transform"
 	"github.com/rancher/norman/types"
 	clusterSchema "github.com/rancher/types/apis/cluster.cattle.io/v3/schema"
@@ -165,13 +167,14 @@ func Endpoint(k8sClient rest.Interface, schemas *types.Schemas) {
 }
 
 func Secret(k8sClient rest.Interface, schemas *types.Schemas) {
-	schema := schemas.Schema(&schema.Version, "secret")
-	schema.Store = proxy.NewProxyStore(k8sClient,
-		[]string{"api"},
-		"",
-		"v1",
-		"Secret",
-		"secrets")
+	schema := schemas.Schema(&schema.Version, "namespacedSecret")
+	schema.Store = secret.NewSecretStore(k8sClient, schemas)
+
+	for _, subSchema := range schemas.Schemas() {
+		if subSchema.BaseType == "secret" && subSchema.ID != "namespacedSecret" && subSchema.ID != "secret" {
+			subSchema.Store = subtype.NewSubTypeStore(subSchema.ID, schema.Store)
+		}
+	}
 }
 
 func Pod(k8sClient rest.Interface, schemas *types.Schemas) {
