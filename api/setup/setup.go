@@ -27,6 +27,8 @@ func Schemas(ctx context.Context, app *config.ClusterContext, schemas *types.Sch
 	Ingress(app.UnversionedClient, schemas)
 	Namespace(app.UnversionedClient, schemas)
 	Node(app.UnversionedClient, schemas)
+	PersistentVolume(app.UnversionedClient, schemas)
+	PersistentVolumeClaims(app.UnversionedClient, schemas)
 	Pod(app.UnversionedClient, schemas)
 	ReplicaSet(app.UnversionedClient, schemas)
 	ReplicationController(app.UnversionedClient, schemas)
@@ -70,6 +72,26 @@ func Node(k8sClient rest.Interface, schemas *types.Schemas) {
 		"v1",
 		"Node",
 		"nodes")
+}
+
+func PersistentVolume(k8sClient rest.Interface, schemas *types.Schemas) {
+	schema := schemas.Schema(&clusterSchema.Version, "persistentVolume")
+	schema.Store = proxy.NewProxyStore(k8sClient,
+		[]string{"api"},
+		"",
+		"v1",
+		"PersistentVolume",
+		"persistentvolumes")
+}
+
+func PersistentVolumeClaims(k8sClient rest.Interface, schemas *types.Schemas) {
+	schema := schemas.Schema(&schema.Version, "persistentVolumeClaim")
+	schema.Store = proxy.NewProxyStore(k8sClient,
+		[]string{"api"},
+		"",
+		"v1",
+		"PersistentVolumeClaim",
+		"persistentvolumeclaims")
 }
 
 func DaemonSet(k8sClient rest.Interface, schemas *types.Schemas) {
