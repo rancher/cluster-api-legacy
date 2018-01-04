@@ -14,10 +14,12 @@ import (
 	"github.com/rancher/norman/store/transform"
 	"github.com/rancher/norman/types"
 	clusterSchema "github.com/rancher/types/apis/cluster.cattle.io/v3/schema"
+	managementschema "github.com/rancher/types/apis/management.cattle.io/v3/schema"
 	"github.com/rancher/types/apis/project.cattle.io/v3/schema"
 	"github.com/rancher/types/client/project/v3"
 	"github.com/rancher/types/config"
 	"k8s.io/client-go/rest"
+	"github.com/rancher/cluster-api/api/namespace"
 )
 
 func Schemas(ctx context.Context, app *config.ClusterContext, schemas *types.Schemas) error {
@@ -42,7 +44,13 @@ func Schemas(ctx context.Context, app *config.ClusterContext, schemas *types.Sch
 		return err
 	}
 
-	if err := crdStore.AddSchemas(ctx, schemas.Schema(&schema.Version, client.WorkloadType)); err != nil {
+	var crdSchemas []*types.Schema
+	for _, schema := range schemas.SchemasForVersion(managementschema.Version) {
+		crdSchemas = append(crdSchemas, schema)
+	}
+
+	crdSchemas = append(crdSchemas, schemas.Schema(&schema.Version, client.WorkloadType))
+	if err := crdStore.AddSchemas(ctx, crdSchemas...); err != nil {
 		return err
 	}
 
@@ -61,8 +69,18 @@ func Namespace(k8sClient rest.Interface, schemas *types.Schemas) {
 		"Namespace",
 		"namespaces")
 
-	clusterSchema := schemas.Schema(&clusterSchema.Version, "namespace")
-	clusterSchema.Store = schema.Store
+	namespaceSchema := schemas.Schema(&clusterSchema.Version, "namespace")
+	namespaceSchema.ResourceActions = map[string]types.Action{
+		"upgrade": {
+			Input: "externalId",
+		},
+		"rollback": {
+			Input: "revision",
+		},
+	}
+	namespaceSchema.Store = schema.Store
+	namespaceSchema.Formatter = namespace.Formatter
+	namespaceSchema.ActionHandler = namespace.ActionHandler
 }
 
 func Node(k8sClient rest.Interface, schemas *types.Schemas) {
