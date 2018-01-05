@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/gorilla/mux"
+	"github.com/rancher/cluster-api/api/pod"
 	"github.com/rancher/cluster-api/api/setup"
 	"github.com/rancher/cluster-api/store"
 	"github.com/rancher/norman-rbac"
@@ -39,5 +41,18 @@ func New(ctx context.Context, cluster *config.ClusterContext) (http.Handler, err
 		return nil, err
 	}
 
-	return server, nil
+	logHandler := pod.Handler{
+		Config: &cluster.RESTConfig,
+		H:      pod.HandleLogWS,
+	}
+	execHandler := pod.Handler{
+		Config: &cluster.RESTConfig,
+		H:      pod.HandleExecWS,
+	}
+
+	r := mux.NewRouter()
+	r.PathPrefix("/").Handler(server)
+	r.Queries("action", "logs").Handler(logHandler)
+	r.Queries("action", "exec").Handler(execHandler)
+	return r, nil
 }

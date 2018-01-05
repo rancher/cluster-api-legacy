@@ -30,7 +30,7 @@ func Schemas(ctx context.Context, app *config.ClusterContext, schemas *types.Sch
 	Node(app.UnversionedClient, schemas)
 	PersistentVolume(app.UnversionedClient, schemas)
 	PersistentVolumeClaims(app.UnversionedClient, schemas)
-	Pod(app.UnversionedClient, schemas)
+	Pod(app.WorkloadContext(), schemas)
 	ReplicaSet(app.UnversionedClient, schemas)
 	ReplicationController(app.UnversionedClient, schemas)
 	Secret(app.UnversionedClient, schemas)
@@ -197,10 +197,12 @@ func Secret(k8sClient rest.Interface, schemas *types.Schemas) {
 	}
 }
 
-func Pod(k8sClient rest.Interface, schemas *types.Schemas) {
+func Pod(workload *config.WorkloadContext, schemas *types.Schemas) {
+	schemas.MustImport(&schema.Version, pod.LogInput{})
+	schemas.MustImport(&schema.Version, pod.ExecInput{})
 	schema := schemas.Schema(&schema.Version, client.PodType)
 	schema.Store = &transform.Store{
-		Store: proxy.NewProxyStore(k8sClient,
+		Store: proxy.NewProxyStore(workload.UnversionedClient,
 			[]string{"api"},
 			"",
 			"v1",
@@ -210,4 +212,16 @@ func Pod(k8sClient rest.Interface, schemas *types.Schemas) {
 		ListTransformer:   pod.ListTransform,
 		StreamTransformer: pod.StreamTransform,
 	}
+	schema.ResourceActions = map[string]types.Action{
+		"logs": {
+			Input:  "logInput",
+			Output: "pod",
+		},
+		"exec": {
+			Input:  "execInput",
+			Output: "pod",
+		},
+	}
+	schema.Formatter = pod.Formatter
+	schema.ActionHandler = pod.ActionHandler
 }
