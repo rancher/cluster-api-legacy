@@ -3,6 +3,7 @@ package setup
 import (
 	"context"
 
+	"github.com/rancher/cluster-api/api/namespace"
 	"github.com/rancher/cluster-api/api/pod"
 	"github.com/rancher/cluster-api/api/workload"
 	"github.com/rancher/cluster-api/store/ingress"
@@ -19,7 +20,6 @@ import (
 	"github.com/rancher/types/client/project/v3"
 	"github.com/rancher/types/config"
 	"k8s.io/client-go/rest"
-	"github.com/rancher/cluster-api/api/namespace"
 )
 
 func Schemas(ctx context.Context, app *config.ClusterContext, schemas *types.Schemas) error {

@@ -20,8 +20,8 @@ import (
 	"github.com/rancher/norman/types/convert"
 	"github.com/rancher/types/apis/cluster.cattle.io/v3/schema"
 	managementschema "github.com/rancher/types/apis/management.cattle.io/v3/schema"
-	projectv3 "github.com/rancher/types/client/project/v3"
 	managementv3 "github.com/rancher/types/client/management/v3"
+	projectv3 "github.com/rancher/types/client/project/v3"
 )
 
 const (
