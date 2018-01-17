@@ -46,7 +46,8 @@ type SecretLister interface {
 type SecretController interface {
 	Informer() cache.SharedIndexInformer
 	Lister() SecretLister
-	AddHandler(handler SecretHandlerFunc)
+	AddHandler(name string, handler SecretHandlerFunc)
+	AddClusterScopedHandler(name, clusterName string, handler SecretHandlerFunc)
 	Enqueue(namespace, name string)
 	Sync(ctx context.Context) error
 	Start(ctx context.Context, threadiness int) error
@@ -64,8 +65,10 @@ type SecretInterface interface {
 	Watch(opts metav1.ListOptions) (watch.Interface, error)
 	DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error
 	Controller() SecretController
-	AddSyncHandler(sync SecretHandlerFunc)
+	AddHandler(name string, sync SecretHandlerFunc)
 	AddLifecycle(name string, lifecycle SecretLifecycle)
+	AddClusterScopedHandler(name, clusterName string, sync SecretHandlerFunc)
+	AddClusterScopedLifecycle(name, clusterName string, lifecycle SecretLifecycle)
 }
 
 type secretLister struct {
@@ -109,8 +112,8 @@ func (c *secretController) Lister() SecretLister {
 	}
 }
 
-func (c *secretController) AddHandler(handler SecretHandlerFunc) {
-	c.GenericController.AddHandler(func(key string) error {
+func (c *secretController) AddHandler(name string, handler SecretHandlerFunc) {
+	c.GenericController.AddHandler(name, func(key string) error {
 		obj, exists, err := c.Informer().GetStore().GetByKey(key)
 		if err != nil {
 			return err
@@ -118,6 +121,24 @@ func (c *secretController) AddHandler(handler SecretHandlerFunc) {
 		if !exists {
 			return handler(key, nil)
 		}
+		return handler(key, obj.(*v1.Secret))
+	})
+}
+
+func (c *secretController) AddClusterScopedHandler(name, cluster string, handler SecretHandlerFunc) {
+	c.GenericController.AddHandler(name, func(key string) error {
+		obj, exists, err := c.Informer().GetStore().GetByKey(key)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			return handler(key, nil)
+		}
+
+		if !controller.ObjectInCluster(cluster, obj) {
+			return nil
+		}
+
 		return handler(key, obj.(*v1.Secret))
 	})
 }
@@ -213,11 +234,20 @@ func (s *secretClient) DeleteCollection(deleteOpts *metav1.DeleteOptions, listOp
 	return s.objectClient.DeleteCollection(deleteOpts, listOpts)
 }
 
-func (s *secretClient) AddSyncHandler(sync SecretHandlerFunc) {
-	s.Controller().AddHandler(sync)
+func (s *secretClient) AddHandler(name string, sync SecretHandlerFunc) {
+	s.Controller().AddHandler(name, sync)
 }
 
 func (s *secretClient) AddLifecycle(name string, lifecycle SecretLifecycle) {
-	sync := NewSecretLifecycleAdapter(name, s, lifecycle)
-	s.AddSyncHandler(sync)
+	sync := NewSecretLifecycleAdapter(name, false, s, lifecycle)
+	s.AddHandler(name, sync)
+}
+
+func (s *secretClient) AddClusterScopedHandler(name, clusterName string, sync SecretHandlerFunc) {
+	s.Controller().AddClusterScopedHandler(name, clusterName, sync)
+}
+
+func (s *secretClient) AddClusterScopedLifecycle(name, clusterName string, lifecycle SecretLifecycle) {
+	sync := NewSecretLifecycleAdapter(name+"_"+clusterName, true, s, lifecycle)
+	s.AddClusterScopedHandler(name, clusterName, sync)
 }
