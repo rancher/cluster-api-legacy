@@ -5,6 +5,7 @@ import (
 
 	"sync"
 
+	"github.com/rancher/norman/api/access"
 	"github.com/rancher/norman/api/builtin"
 	"github.com/rancher/norman/api/handler"
 	"github.com/rancher/norman/api/writer"
@@ -194,12 +195,12 @@ func (s *Server) handle(rw http.ResponseWriter, req *http.Request) (*types.APICo
 				}
 				handler = apiRequest.Schema.CreateHandler
 			case http.MethodPut:
-				if !apiRequest.AccessControl.CanUpdate(apiRequest, apiRequest.Schema) {
+				if !apiRequest.AccessControl.CanUpdate(apiRequest, nil, apiRequest.Schema) {
 					return apiRequest, httperror.NewAPIError(httperror.PermissionDenied, "Can not update "+apiRequest.Schema.Type)
 				}
 				handler = apiRequest.Schema.UpdateHandler
 			case http.MethodDelete:
-				if !apiRequest.AccessControl.CanDelete(apiRequest, apiRequest.Schema) {
+				if !apiRequest.AccessControl.CanDelete(apiRequest, nil, apiRequest.Schema) {
 					return apiRequest, httperror.NewAPIError(httperror.PermissionDenied, "Can not delete "+apiRequest.Schema.Type)
 				}
 				handler = apiRequest.Schema.DeleteHandler
@@ -220,8 +221,11 @@ func (s *Server) handle(rw http.ResponseWriter, req *http.Request) (*types.APICo
 	return apiRequest, nil
 }
 
-func handleAction(action *types.Action, request *types.APIContext) error {
-	return request.Schema.ActionHandler(request.Action, action, request)
+func handleAction(action *types.Action, context *types.APIContext) error {
+	if err := access.ByID(context, context.Version, context.Type, context.ID, nil); err != nil {
+		return err
+	}
+	return context.Schema.ActionHandler(context.Action, action, context)
 }
 
 func (s *Server) handleError(apiRequest *types.APIContext, err error) {
